@@ -402,14 +402,12 @@ async function ensureCollection(databases: Databases): Promise<void> {
     console.log("Creating heartbeats collection...");
 
     // Create collection
-    await safeCreateCollection(
-      databases,
+        // Create collection
+    await databases.createCollection(
       DATABASE_ID,
       COLLECTION_ID,
       COLLECTION_NAME,
-      [Permission.read(Role.any()), Permission.write(Role.any())],
-      false,
-      true,
+      [Permission.read(Role.any()), Permission.write(Role.any())]
     );
 
     // Add timestamp attribute

@@ -14,6 +14,194 @@ const SITE_KEEPALIVE_USER_AGENT =
 const SITE_KEEPALIVE_TIMEOUT_MS = 15_000;
 
 /**
+ * Compatibility helpers that try both modern object-style and older
+ * positional-style node-appwrite SDK method signatures. We try object-style
+ * first and fall back to positional calls. Each helper logs which style was
+ * used to aid debugging in CI.
+ */
+async function safeCreateDatabase(databases: Databases, databaseId: string, name: string) {
+  try {
+    await databases.create({ databaseId, name });
+    console.log(`databases.create -> used object-style for database ${databaseId}`);
+    return;
+  } catch (err) {
+    try {
+      await (databases as any).create(databaseId, name);
+      console.log(`databases.create -> used positional-style for database ${databaseId}`);
+      return;
+    } catch (err2) {
+      throw err2;
+    }
+  }
+}
+
+async function safeGetDatabase(databases: Databases, databaseId: string) {
+  try {
+    const res = await databases.get({ databaseId });
+    console.log(`databases.get -> used object-style for database ${databaseId}`);
+    return res;
+  } catch (err) {
+    try {
+      const res = await (databases as any).get(databaseId);
+      console.log(`databases.get -> used positional-style for database ${databaseId}`);
+      return res;
+    } catch (err2) {
+      throw err2;
+    }
+  }
+}
+
+async function safeGetCollection(databases: Databases, databaseId: string, collectionId: string) {
+  try {
+    const res = await databases.getCollection({ databaseId, collectionId });
+    console.log(`databases.getCollection -> used object-style for ${collectionId}`);
+    return res;
+  } catch (err) {
+    try {
+      const res = await (databases as any).getCollection(databaseId, collectionId);
+      console.log(`databases.getCollection -> used positional-style for ${collectionId}`);
+      return res;
+    } catch (err2) {
+      throw err2;
+    }
+  }
+}
+
+async function safeCreateCollection(
+  databases: Databases,
+  databaseId: string,
+  collectionId: string,
+  name: string,
+  permissions: any[],
+  documentSecurity = false,
+  enabled = true,
+) {
+  try {
+    await databases.createCollection({
+      databaseId,
+      collectionId,
+      name,
+      permissions,
+      documentSecurity,
+      enabled,
+    });
+    console.log(`databases.createCollection -> used object-style for ${collectionId}`);
+    return;
+  } catch (err) {
+    try {
+      await (databases as any).createCollection(
+        databaseId,
+        collectionId,
+        name,
+        permissions,
+        documentSecurity,
+        enabled,
+      );
+      console.log(`databases.createCollection -> used positional-style for ${collectionId}`);
+      return;
+    } catch (err2) {
+      throw err2;
+    }
+  }
+}
+
+async function safeCreateDatetimeAttribute(
+  databases: Databases,
+  databaseId: string,
+  collectionId: string,
+  key: string,
+  required = true,
+) {
+  try {
+    await databases.createDatetimeAttribute({ databaseId, collectionId, key, required });
+    console.log(`createDatetimeAttribute -> used object-style for ${key}`);
+    return;
+  } catch (err) {
+    try {
+      await (databases as any).createDatetimeAttribute(databaseId, collectionId, key, required);
+      console.log(`createDatetimeAttribute -> used positional-style for ${key}`);
+      return;
+    } catch (err2) {
+      throw err2;
+    }
+  }
+}
+
+async function safeCreateStringAttribute(
+  databases: Databases,
+  databaseId: string,
+  collectionId: string,
+  key: string,
+  size: number,
+  required = true,
+) {
+  try {
+    await databases.createStringAttribute({ databaseId, collectionId, key, size, required });
+    console.log(`createStringAttribute -> used object-style for ${key}`);
+    return;
+  } catch (err) {
+    try {
+      await (databases as any).createStringAttribute(databaseId, collectionId, key, size, required);
+      console.log(`createStringAttribute -> used positional-style for ${key}`);
+      return;
+    } catch (err2) {
+      throw err2;
+    }
+  }
+}
+
+async function safeUpdateDocument(
+  databases: Databases,
+  databaseId: string,
+  collectionId: string,
+  documentId: string,
+  data: unknown,
+) {
+  try {
+    await databases.updateDocument({ databaseId, collectionId, documentId, data });
+    console.log(`updateDocument -> used object-style for ${documentId}`);
+    return;
+  } catch (err) {
+    try {
+      await (databases as any).updateDocument(databaseId, collectionId, documentId, data);
+      console.log(`updateDocument -> used positional-style for ${documentId}`);
+      return;
+    } catch (err2) {
+      throw err2;
+    }
+  }
+}
+
+async function safeCreateDocument(
+  databases: Databases,
+  databaseId: string,
+  collectionId: string,
+  documentId: string,
+  data: unknown,
+  permissions?: any[],
+) {
+  try {
+    const payload: any = { databaseId, collectionId, documentId, data };
+    if (permissions) payload.permissions = permissions;
+    await databases.createDocument(payload);
+    console.log(`createDocument -> used object-style for ${documentId}`);
+    return;
+  } catch (err) {
+    try {
+      if (permissions) {
+        await (databases as any).createDocument(databaseId, collectionId, documentId, data, permissions);
+      } else {
+        await (databases as any).createDocument(databaseId, collectionId, documentId, data);
+      }
+      console.log(`createDocument -> used positional-style for ${documentId}`);
+      return;
+    } catch (err2) {
+      throw err2;
+    }
+  }
+}
+
+/**
  * Sends an HTTP GET to a deployed Appwrite Sites URL.
  *
  * Appwrite Sites pause logic counts site traffic (HTTP visits) independently
@@ -147,7 +335,7 @@ async function runDatabaseHeartbeat(args: DatabaseHeartbeatArgs): Promise<Databa
     await ensureCollection(databases);
 
     try {
-      await databases.updateDocument(DATABASE_ID, COLLECTION_ID, "status", {
+      await safeUpdateDocument(databases, DATABASE_ID, COLLECTION_ID, "status", {
         timestamp,
         source: "github-actions",
       });
@@ -157,10 +345,10 @@ async function runDatabaseHeartbeat(args: DatabaseHeartbeatArgs): Promise<Databa
       const updateMessage =
         updateError instanceof Error ? updateError.message : String(updateError);
       if (updateMessage.includes("not be found") || updateMessage.includes("404")) {
-        await databases.createDocument(DATABASE_ID, COLLECTION_ID, "status", {
+        await safeCreateDocument(databases, DATABASE_ID, COLLECTION_ID, "status", {
           timestamp,
           source: "github-actions",
-        });
+        }, [Permission.read(Role.any())]);
         console.log(`[${projectLabel}] db initial heartbeat created at ${timestamp}`);
         return { success: true, message: "db initial heartbeat created" };
       }
@@ -194,10 +382,10 @@ async function ensureDatabase(databases: Databases): Promise<void> {
   const { DATABASE_ID, DATABASE_NAME } = KEEPALIVE_CONFIG;
 
   try {
-    await databases.get(DATABASE_ID);
+    await safeGetDatabase(databases, DATABASE_ID);
   } catch {
     console.log("Creating keepalive database...");
-    await databases.create(DATABASE_ID, DATABASE_NAME);
+    await safeCreateDatabase(databases, DATABASE_ID, DATABASE_NAME);
     console.log("Database created.");
   }
 }
@@ -209,12 +397,13 @@ async function ensureCollection(databases: Databases): Promise<void> {
   const { DATABASE_ID, COLLECTION_ID, COLLECTION_NAME } = KEEPALIVE_CONFIG;
 
   try {
-    await databases.getCollection(DATABASE_ID, COLLECTION_ID);
+    await safeGetCollection(databases, DATABASE_ID, COLLECTION_ID);
   } catch {
     console.log("Creating heartbeats collection...");
 
     // Create collection
-    await databases.createCollection(
+    await safeCreateCollection(
+      databases,
       DATABASE_ID,
       COLLECTION_ID,
       COLLECTION_NAME,
@@ -224,21 +413,10 @@ async function ensureCollection(databases: Databases): Promise<void> {
     );
 
     // Add timestamp attribute
-    await databases.createDatetimeAttribute(
-      DATABASE_ID,
-      COLLECTION_ID,
-      "timestamp",
-      true,
-    );
+    await safeCreateDatetimeAttribute(databases, DATABASE_ID, COLLECTION_ID, "timestamp", true);
 
     // Add source attribute
-    await databases.createStringAttribute(
-      DATABASE_ID,
-      COLLECTION_ID,
-      "source",
-      64,
-      true,
-    );
+    await safeCreateStringAttribute(databases, DATABASE_ID, COLLECTION_ID, "source", 64, true);
 
     // Wait for attributes to be ready (Appwrite processes them async)
     console.log("Waiting for attributes to be ready...");

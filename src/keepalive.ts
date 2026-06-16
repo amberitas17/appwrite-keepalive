@@ -19,13 +19,16 @@ const SITE_KEEPALIVE_TIMEOUT_MS = 15_000;
  * first and fall back to positional calls. Each helper logs which style was
  * used to aid debugging in CI.
  */
+// Replace your safeCreateDatabase function with this:
 async function safeCreateDatabase(databases: Databases, databaseId: string, name: string) {
   try {
-    await databases.create({ databaseId, name });
+    // Correct Appwrite SDK parameter for database creation object
+    await databases.create({ databaseId, name: name });
     console.log(`databases.create -> used object-style for database ${databaseId}`);
     return;
   } catch (err) {
     try {
+      // True positional fallback: (databaseId, name)
       await (databases as any).create(databaseId, name);
       console.log(`databases.create -> used positional-style for database ${databaseId}`);
       return;
@@ -34,6 +37,7 @@ async function safeCreateDatabase(databases: Databases, databaseId: string, name
     }
   }
 }
+
 
 async function safeGetDatabase(databases: Databases, databaseId: string) {
   try {

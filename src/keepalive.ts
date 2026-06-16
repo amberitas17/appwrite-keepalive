@@ -141,17 +141,15 @@ async function runDatabaseHeartbeat(args: DatabaseHeartbeatArgs): Promise<Databa
     client.setEndpoint(endpoint).setProject(projectId).setKey(apiKey);
 
     const databases = new Databases(client);
-    const { DATABASE_ID, COLLECTION_ID, DOCUMENT_ID } = KEEPALIVE_CONFIG;
+    const { DATABASE_ID, DATABASE_NAME, COLLECTION_ID, COLLECTION_NAME } = KEEPALIVE_CONFIG;
 
-    await ensureDatabase(databases);
-    await ensureCollection(databases);
+    await ensureDatabase(databases, DATABASE_ID, DATABASE_NAME);
+    await ensureCollection(databases, DATABASE_ID, COLLECTION_ID, COLLECTION_NAME);
 
     try {
-      await databases.updateDocument({
-        databaseId: DATABASE_ID,
-        collectionId: COLLECTION_ID,
-        documentId: DOCUMENT_ID,
-        data: { timestamp, source: "github-actions" },
+      await databases.updateDocument(DATABASE_ID, COLLECTION_ID, "status", {
+        timestamp,
+        source: "github-actions",
       });
       console.log(`[${projectLabel}] db heartbeat sent at ${timestamp}`);
       return { success: true, message: "db heartbeat sent" };
@@ -159,12 +157,9 @@ async function runDatabaseHeartbeat(args: DatabaseHeartbeatArgs): Promise<Databa
       const updateMessage =
         updateError instanceof Error ? updateError.message : String(updateError);
       if (updateMessage.includes("not be found") || updateMessage.includes("404")) {
-        await databases.createDocument({
-          databaseId: DATABASE_ID,
-          collectionId: COLLECTION_ID,
-          documentId: DOCUMENT_ID,
-          data: { timestamp, source: "github-actions" },
-          permissions: [Permission.read(Role.any())],
+        await databases.createDocument(DATABASE_ID, COLLECTION_ID, "status", {
+          timestamp,
+          source: "github-actions",
         });
         console.log(`[${projectLabel}] db initial heartbeat created at ${timestamp}`);
         return { success: true, message: "db initial heartbeat created" };
@@ -195,17 +190,16 @@ async function runSiteHeartbeat(
 /**
  * Ensures the keepalive database exists, creates it if not
  */
-async function ensureDatabase(databases: Databases): Promise<void> {
-  const { DATABASE_ID, DATABASE_NAME } = KEEPALIVE_CONFIG;
-
+async function ensureDatabase(
+  databases: Databases,
+  databaseId: string,
+  databaseName: string,
+): Promise<void> {
   try {
-    await databases.get({ databaseId: DATABASE_ID });
+    await databases.get(databaseId);
   } catch {
     console.log("Creating keepalive database...");
-    await databases.create({
-      databaseId: DATABASE_ID,
-      name: DATABASE_NAME,
-    });
+    await databases.create(databaseId, databaseName);
     console.log("Database created.");
   }
 }
@@ -213,43 +207,30 @@ async function ensureDatabase(databases: Databases): Promise<void> {
 /**
  * Ensures the heartbeats collection exists with proper attributes
  */
-async function ensureCollection(databases: Databases): Promise<void> {
-  const { DATABASE_ID, COLLECTION_ID, COLLECTION_NAME } = KEEPALIVE_CONFIG;
-
+async function ensureCollection(
+  databases: Databases,
+  databaseId: string,
+  collectionId: string,
+  collectionName: string,
+): Promise<void> {
   try {
-    await databases.getCollection({
-      databaseId: DATABASE_ID,
-      collectionId: COLLECTION_ID,
-    });
+    await databases.getCollection(databaseId, collectionId);
   } catch {
     console.log("Creating heartbeats collection...");
 
     // Create collection
-    await databases.createCollection({
-      databaseId: DATABASE_ID,
-      collectionId: COLLECTION_ID,
-      name: COLLECTION_NAME,
-      permissions: [Permission.read(Role.any()), Permission.write(Role.any())],
-      documentSecurity: false,
-      enabled: true,
-    });
+    await databases.createCollection(
+      databaseId,
+      collectionId,
+      collectionName,
+      [Permission.read(Role.any()), Permission.write(Role.any())],
+    );
 
     // Add timestamp attribute
-    await databases.createDatetimeAttribute({
-      databaseId: DATABASE_ID,
-      collectionId: COLLECTION_ID,
-      key: "timestamp",
-      required: true,
-    });
+    await databases.createDatetimeAttribute(databaseId, collectionId, "timestamp", true);
 
     // Add source attribute
-    await databases.createStringAttribute({
-      databaseId: DATABASE_ID,
-      collectionId: COLLECTION_ID,
-      key: "source",
-      size: 64,
-      required: true,
-    });
+    await databases.createStringAttribute(databaseId, collectionId, "source", 64, true);
 
     // Wait for attributes to be ready (Appwrite processes them async)
     console.log("Waiting for attributes to be ready...");

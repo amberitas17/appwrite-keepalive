@@ -250,10 +250,19 @@ export function loadProjectsFromEnv(): ProjectConfig[] {
   const projectsJson = process.env.APPWRITE_PROJECTS;
   if (projectsJson) {
     try {
-      const parsed = JSON.parse(projectsJson) as ProjectConfig[];
+      const parsed = JSON.parse(projectsJson) as unknown[];
       if (Array.isArray(parsed)) {
-        projects.push(...parsed);
-        console.log(`Loaded ${parsed.length} projects from APPWRITE_PROJECTS`);
+        for (const item of parsed) {
+          const config = item as ProjectConfig;
+          if (!config.endpoint || !config.projectId || !config.apiKey) {
+            console.error(
+              `Invalid project config: missing endpoint, projectId, or apiKey`,
+            );
+            continue;
+          }
+          projects.push(config);
+        }
+        console.log(`Loaded ${projects.length} projects from APPWRITE_PROJECTS`);
         return projects;
       }
     } catch {
